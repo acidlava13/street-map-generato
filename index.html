@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aesthetic Street Map Generator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0f172a; /* Slate 900 */
+            color: #f8fafc;
+        }
+        
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1e293b; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #475569; 
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #64748b; 
+        }
+
+        .canvas-container {
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            transition: transform 0.3s ease;
+        }
+
+        input[type="color"] {
+            -webkit-appearance: none;
+            border: none;
+            width: 32px;
+            height: 32px;
+            border-radius: 6px;
+            padding: 0;
+            cursor: pointer;
+            overflow: hidden;
+        }
+        input[type="color"]::-webkit-color-swatch-wrapper {
+            padding: 0;
+        }
+        input[type="color"]::-webkit-color-swatch {
+            border: none;
+            border-radius: 6px;
+        }
+
+        /* Range Slider Styling */
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            background: transparent;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 16px;
+            width: 16px;
+            border-radius: 50%;
+            background: #3b82f6;
+            cursor: pointer;
+            margin-top: -6px;
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            cursor: pointer;
+            background: #334155;
+            border-radius: 2px;
+        }
+
+        .loader {
+            border: 3px solid #1e293b;
+            border-bottom-color: #3b82f6;
+            border-radius: 50%;
+            display: inline-block;
+            box-sizing: border-box;
+            animation: rotation 1s linear infinite;
+        }
+        @keyframes rotation {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="h-screen w-screen overflow-hidden flex flex-col md:flex-row">
+
+    <!-- Sidebar Controls -->
+    <aside class="w-full md:w-80 lg:w-96 bg-slate-800 border-r border-slate-700 flex flex-col h-1/2 md:h-full z-10 overflow-y-auto">
+        <div class="p-6 border-b border-slate-700">
+            <h1 class="text-2xl font-bold text-white flex items-center gap-2">
+                <i class="fa-solid fa-map-location-dot text-blue-500"></i> MapArt Studio
+            </h1>
+            <p class="text-slate-400 text-sm mt-1">Generate aesthetic street maps</p>
+        </div>
+
+        <div class="p-6 flex-1 flex flex-col gap-6">
+            
+            <!-- Location Search -->
+            <div>
+                <label class="block text-sm font-medium text-slate-300 mb-2">Location Name</label>
+                <div class="relative flex flex-col gap-2">
+                    <div class="flex gap-2">
+                        <input type="text" id="locationInput" value="Paris, France" class="w-full bg-slate-900 border border-slate-600 rounded-lg py-2 px-4 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" placeholder="e.g., Tokyo, New York...">
+                        <button id="searchLocBtn" title="Search exact location" class="bg-slate-700 hover:bg-slate-600 text-white px-4 rounded-lg transition-colors flex items-center justify-center">
+                            <i class="fa-solid fa-search"></i>
+                        </button>
+                    </div>
+                    <!-- Selection dropdown (Slide under menu) -->
+                    <div id="locationResultsContainer" class="hidden flex-col gap-1 mt-1 transition-all">
+                        <label class="text-xs text-slate-400 font-medium">Select exact place:</label>
+                        <select id="locationSelect" class="w-full bg-slate-800 border border-slate-600 rounded-lg py-2 px-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 overflow-hidden text-ellipsis">
+                            <!-- Options populated dynamically -->
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Map Scale -->
+            <div>
+                <div class="flex justify-between items-center mb-2">
+                    <label class="text-sm font-medium text-slate-300">Coverage Radius</label>
+                    <span id="radiusVal" class="text-xs bg-slate-700 px-2 py-1 rounded text-slate-300">3 km</span>
+                </div>
+                <input type="range" id="radiusInput" min="1" max="15" step="0.5" value="3">
+                <p class="text-xs text-slate-500 mt-1">Larger radius covers more area but takes longer to render.</p>
+            </div>
+
+            <hr class="border-slate-700">
+
+            <!-- Colors -->
+            <div>
+                <h3 class="text-sm font-medium text-slate-300 mb-3 uppercase tracking-wider">Aesthetics</h3>
+                
+                <div class="space-y-4">
+                    <div class="flex items-center justify-between">
+                        <label class="text-sm text-slate-300">Background</label>
+                        <input type="color" id="bgColor" value="#111111">
+                    </div>
+                    
+                    <div class="flex items-center justify-between">
+                        <label class="text-sm text-slate-300">Major Streets</label>
+                        <input type="color" id="majorColor" value="#ffffff">
+                    </div>
+
+                    <div class="flex items-center justify-between">
+                        <label class="text-sm text-slate-300">Minor Streets</label>
+                        <input type="color" id="minorColor" value="#475569">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Thickness -->
+            <div>
+                <div class="flex justify-between items-center mb-2">
+                    <label class="text-sm text-slate-300">Major Street Thickness</label>
+                </div>
+                <input type="range" id="majorWidth" min="1" max="10" step="0.5" value="4">
+                
+                <div class="flex justify-between items-center mb-2 mt-4">
+                    <label class="text-sm text-slate-300">Minor Street Thickness</label>
+                </div>
+                <input type="range" id="minorWidth" min="0.1" max="5" step="0.1" value="1.5">
+            </div>
+
+        </div>
+
+        <div class="p-6 border-t border-slate-700 bg-slate-800 space-y-3">
+            <button id="generateBtn" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-medium py-3 px-4 rounded-lg transition-colors flex items-center justify-center gap-2">
+                <i class="fa-solid fa-wand-magic-sparkles"></i> Generate Map
+            </button>
+            <button id="downloadBtn" class="w-full bg-slate-700 hover:bg-slate-600 text-white font-medium py-3 px-4 rounded-lg transition-colors flex items-center justify-center gap-2 opacity-50 cursor-not-allowed" disabled>
+                <i class="fa-solid fa-download"></i> Download High-Res PNG
+            </button>
+        </div>
+    </aside>
+
+    <!-- Main Workspace (Canvas) -->
+    <main class="flex-1 bg-slate-900 flex items-center justify-center relative p-4 overflow-hidden">
+        
+        <!-- Background Grid Pattern for Workspace -->
+        <div class="absolute inset-0 z-0 opacity-10 pointer-events-none" style="background-image: radial-gradient(#475569 1px, transparent 1px); background-size: 20px 20px;"></div>
+
+        <!-- Canvas Container -->
+        <div class="relative z-10 flex items-center justify-center w-full h-full">
+            <!-- 
+              Canvas acts as the high-res render target. 
+              We display it scaled down via CSS max-width/max-height to fit the screen. 
+            -->
+            <canvas id="mapCanvas" class="canvas-container rounded-sm bg-black" style="max-width: 100%; max-height: 100%; object-fit: contain; aspect-ratio: 3/4;"></canvas>
+            
+            <!-- Loading Overlay -->
+            <div id="loadingOverlay" class="absolute inset-0 bg-slate-900/80 backdrop-blur-sm hidden flex-col items-center justify-center rounded-sm z-20">
+                <span class="loader w-12 h-12 mb-4"></span>
+                <p id="loadingText" class="text-blue-400 font-medium">Fetching satellite coordinates...</p>
+                <p class="text-slate-400 text-sm mt-2 text-center max-w-xs">This might take a moment depending on the radius and city density.</p>
+            </div>
+        </div>
+
+        <!-- Error Toast -->
+        <div id="errorToast" class="absolute top-6 right-6 bg-red-900/90 border border-red-500 text-white px-4 py-3 rounded-lg shadow-lg transform transition-transform translate-x-full z-50 flex items-center gap-3">
+            <i class="fa-solid fa-circle-exclamation text-xl"></i>
+            <span id="errorMessage">An error occurred.</span>
+        </div>
+
+    </main>
+
+    <script>
+        // DOM Elements
+        const locationInput = document.getElementById('locationInput');
+        const searchLocBtn = document.getElementById('searchLocBtn');
+        const locationResultsContainer = document.getElementById('locationResultsContainer');
+        const locationSelect = document.getElementById('locationSelect');
+        const radiusInput = document.getElementById('radiusInput');
+        const radiusVal = document.getElementById('radiusVal');
+        
+        const bgColorInput = document.getElementById('bgColor');
+        const majorColorInput = document.getElementById('majorColor');
+        const minorColorInput = document.getElementById('minorColor');
+        
+        const majorWidthInput = document.getElementById('majorWidth');
+        const minorWidthInput = document.getElementById('minorWidth');
+        
+        const generateBtn = document.getElementById('generateBtn');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const canvas = document.getElementById('mapCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        const loadingOverlay = document.getElementById('loadingOverlay');
+        const loadingText = document.getElementById('loadingText');
+        const errorToast = document.getElementById('errorToast');
+        const errorMessage = document.getElementById('errorMessage');
+
+        // State
+        let mapData = null; // Stores Overpass API response
+        let currentCoords = null; // Stores the currently selected geocoordinates
+
+        // Initialize high-res canvas (Poster size 2400x3200 for crisp prints)
+        const CANVAS_WIDTH = 2400;
+        const CANVAS_HEIGHT = 3200;
+        canvas.width = CANVAS_WIDTH;
+        canvas.height = CANVAS_HEIGHT;
+
+        // UI Listeners
+        radiusInput.addEventListener('input', (e) => {
+            radiusVal.textContent = `${e.target.value} km`;
+        });
+
+        // Trigger redraw if data exists and style changes
+        [bgColorInput, majorColorInput, minorColorInput, majorWidthInput, minorWidthInput].forEach(input => {
+            input.addEventListener('input', () => {
+                if (mapData) {
+                    drawMap();
+                }
+            });
+        });
+
+        // Error handling UI
+        function showError(msg) {
+            errorMessage.textContent = msg;
+            errorToast.classList.remove('translate-x-full');
+            setTimeout(() => {
+                errorToast.classList.add('translate-x-full');
+            }, 5000);
+        }
+
+        // Loading UI
+        function setLoading(isLoading, text = '') {
+            if (isLoading) {
+                loadingText.textContent = text;
+                loadingOverlay.classList.remove('hidden');
+                loadingOverlay.classList.add('flex');
+                generateBtn.disabled = true;
+                generateBtn.classList.add('opacity-50', 'cursor-not-allowed');
+            } else {
+                loadingOverlay.classList.add('hidden');
+                loadingOverlay.classList.remove('flex');
+                generateBtn.disabled = false;
+                generateBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            }
+        }
+
+        // 1. Search and populate location options
+        async function searchLocations(query) {
+            if (!query.trim()) return;
+            setLoading(true, 'Searching locations...');
+            try {
+                // Fetch up to 5 matches to let user choose the correct one
+                const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=5`;
+                const response = await fetch(url, {
+                    headers: { 'Accept-Language': 'en-US,en;q=0.9' }
+                });
+                if (!response.ok) throw new Error('Failed to reach geocoding service.');
+                const data = await response.json();
+                
+                if (data.length === 0) {
+                    locationResultsContainer.classList.add('hidden');
+                    currentCoords = null;
+                    throw new Error('Location not found. Try a different query.');
+                }
+
+                // Populate the dropdown menu
+                locationSelect.innerHTML = '';
+                data.forEach((place) => {
+                    const option = document.createElement('option');
+                    option.value = JSON.stringify({ lat: parseFloat(place.lat), lon: parseFloat(place.lon) });
+                    option.textContent = place.display_name;
+                    locationSelect.appendChild(option);
+                });
+                
+                locationResultsContainer.classList.remove('hidden');
+                currentCoords = JSON.parse(locationSelect.value); // Set to first result initially
+                
+            } catch (err) {
+                showError(err.message);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        // Search Events
+        searchLocBtn.addEventListener('click', () => searchLocations(locationInput.value));
+        locationInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') searchLocations(locationInput.value);
+        });
+        locationInput.addEventListener('input', () => {
+            // Hide dropdown if user starts typing a new location
+            locationResultsContainer.classList.add('hidden');
+            currentCoords = null;
+        });
+        locationSelect.addEventListener('change', (e) => {
+            currentCoords = JSON.parse(e.target.value);
+        });
+
+        // Calculate bounding box based on center lat/lon and radius in km
+        function calculateBoundingBox(lat, lon, radiusKm) {
+            // Rough approximation: 1 degree latitude is ~111.32 km
+            const latDelta = radiusKm / 111.32;
+            // Longitude delta changes based on latitude
+            const lonDelta = radiusKm / (111.32 * Math.cos(lat * (Math.PI / 180)));
+            
+            return {
+                minLat: lat - latDelta,
+                maxLat: lat + latDelta,
+                minLon: lon - lonDelta,
+                maxLon: lon + lonDelta
+            };
+        }
+
+        // 2. Fetch Street Data from Overpass API
+        async function fetchOverpassData(bbox) {
+            // Overpass QL to fetch only highways (roads)
+            // Filtering out footways and unclassified paths to keep map clean if desired,
+            // but we'll fetch most and filter during render for flexibility.
+            const query = `
+                [out:json][timeout:50];
+                (
+                  way["highway"~"motorway|trunk|primary|secondary|tertiary|residential|unclassified|pedestrian|living_street"]
+                  (${bbox.minLat},${bbox.minLon},${bbox.maxLat},${bbox.maxLon});
+                );
+                out body;
+                >;
+                out skel qt;
+            `;
+
+            const url = 'https://overpass-api.de/api/interpreter';
+            const response = await fetch(url, {
+                method: 'POST',
+                body: query
+            });
+
+            if (!response.ok) {
+                if (response.status === 429) throw new Error('Overpass API rate limit exceeded. Please wait a minute.');
+                throw new Error('Failed to fetch street data. Area might be too large.');
+            }
+
+            const data = await response.json();
+            if (!data.elements || data.elements.length === 0) {
+                throw new Error('No streets found in this area.');
+            }
+            return data.elements;
+        }
+
+
+        // Helper: Web Mercator Projection mapping functions
+        function mercatorX(lon) {
+            return (lon + 180) / 360;
+        }
+        function mercatorY(lat) {
+            const rad = lat * Math.PI / 180;
+            const sin = Math.sin(rad);
+            return 0.5 - Math.log((1 + sin) / (1 - sin)) / (4 * Math.PI);
+        }
+
+        // Main Draw Function
+        function drawMap() {
+            if (!mapData) return;
+            
+            // Clear and fill background
+            ctx.fillStyle = bgColorInput.value;
+            ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+            // Separate elements into nodes and ways
+            const nodes = {};
+            const ways = [];
+
+            // Identify bounds of the actual data to center/scale perfectly
+            let minLon = Infinity, maxLon = -Infinity;
+            let minLat = Infinity, maxLat = -Infinity;
+
+            mapData.forEach(el => {
+                if (el.type === 'node') {
+                    nodes[el.id] = el;
+                    if (el.lon < minLon) minLon = el.lon;
+                    if (el.lon > maxLon) maxLon = el.lon;
+                    if (el.lat < minLat) minLat = el.lat;
+                    if (el.lat > maxLat) maxLat = el.lat;
+                } else if (el.type === 'way') {
+                    ways.push(el);
+                }
+            });
+
+            // Convert bounds to Mercator coordinates
+            const mMinX = mercatorX(minLon);
+            const mMaxX = mercatorX(maxLon);
+            // Note: latitude is inverted in Mercator (higher lat = lower y)
+            const mMinY = mercatorY(maxLat); 
+            const mMaxY = mercatorY(minLat);
+
+            const mapWidth = mMaxX - mMinX;
+            const mapHeight = mMaxY - mMinY;
+
+            // Calculate uniform scale to fit inside canvas with 5% padding
+            const padding = 100;
+            const targetWidth = CANVAS_WIDTH - (padding * 2);
+            const targetHeight = CANVAS_HEIGHT - (padding * 2);
+            
+            const scaleX = targetWidth / mapWidth;
+            const scaleY = targetHeight / mapHeight;
+            const scale = Math.min(scaleX, scaleY);
+
+            // Calculate offsets to center the map
+            const offsetX = padding + (targetWidth - (mapWidth * scale)) / 2;
+            const offsetY = padding + (targetHeight - (mapHeight * scale)) / 2;
+
+            // Set drawing context properties
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+
+            // Group ways by type for proper layering (minor first, major on top)
+            const majorTypes = ['motorway', 'motorway_link', 'trunk', 'trunk_link', 'primary', 'primary_link', 'secondary', 'secondary_link'];
+            
+            const minorWays = [];
+            const majorWays = [];
+
+            ways.forEach(way => {
+                const hType = way.tags ? way.tags.highway : '';
+                if (majorTypes.includes(hType)) {
+                    majorWays.push(way);
+                } else {
+                    minorWays.push(way);
+                }
+            });
+
+            // Function to render a batch of ways
+            const renderWays = (wayGroup, color, lineWidth) => {
+                ctx.strokeStyle = color;
+                ctx.lineWidth = lineWidth;
+                ctx.beginPath();
+                
+                wayGroup.forEach(way => {
+                    let first = true;
+                    way.nodes.forEach(nodeId => {
+                        const node = nodes[nodeId];
+                        if (!node) return; // Node might be outside downloaded bbox
+
+                        const x = offsetX + (mercatorX(node.lon) - mMinX) * scale;
+                        const y = offsetY + (mercatorY(node.lat) - mMinY) * scale;
+
+                        if (first) {
+                            ctx.moveTo(x, y);
+                            first = false;
+                        } else {
+                            ctx.lineTo(x, y);
+                        }
+                    });
+                });
+                
+                ctx.stroke();
+            };
+
+            // Render Minor Roads
+            renderWays(minorWays, minorColorInput.value, minorWidthInput.value);
+            
+            // Render Major Roads over minor
+            renderWays(majorWays, majorColorInput.value, majorWidthInput.value);
+
+            // Enable download button once map is rendered
+            downloadBtn.disabled = false;
+            downloadBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+        }
+
+
+        // Master Generate Pipeline
+        generateBtn.addEventListener('click', async () => {
+            const locName = locationInput.value.trim();
+            if (!locName) {
+                showError('Please enter a location.');
+                return;
+            }
+
+            const radiusKm = parseFloat(radiusInput.value);
+
+            try {
+                // 1. Ensure we have coordinates (search automatically if needed)
+                if (!currentCoords || locationResultsContainer.classList.contains('hidden')) {
+                    await searchLocations(locName);
+                    if (!currentCoords) return; // Stop if search failed to find anything
+                }
+                
+                // 2. Calculate BBox from the selected coordinates
+                const bbox = calculateBoundingBox(currentCoords.lat, currentCoords.lon, radiusKm);
+                
+                // 3. Fetch Data
+                setLoading(true, 'Downloading street vectors (may take a moment)...');
+                mapData = await fetchOverpassData(bbox);
+                
+                // 4. Render
+                setLoading(true, 'Rendering high-res map...');
+                // Slight timeout to allow UI to update loading text before heavy computation blocks thread
+                setTimeout(() => {
+                    try {
+                        drawMap();
+                        setLoading(false);
+                    } catch (renderError) {
+                        console.error(renderError);
+                        setLoading(false);
+                        showError('Error rendering map. Data might be malformed.');
+                    }
+                }, 50);
+
+            } catch (err) {
+                console.error(err);
+                setLoading(false);
+                showError(err.message || 'An unexpected error occurred.');
+            }
+        });
+
+        // Download PNG logic
+        downloadBtn.addEventListener('click', () => {
+            if (!mapData) return;
+            
+            // Generate filename based on location
+            const locName = locationInput.value.trim().replace(/[^a-z0-9]/gi, '_').toLowerCase();
+            const fileName = `map_${locName || 'custom'}_art.png`;
+            
+            // Create download link
+            const link = document.createElement('a');
+            link.download = fileName;
+            // Get image data from canvas
+            link.href = canvas.toDataURL('image/png', 1.0);
+            
+            // Trigger download
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        });
+
+        // Initialize with default background state before generation
+        ctx.fillStyle = bgColorInput.value;
+        ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+        
+        // Optional: Auto-generate on first load for demonstration
+        // setTimeout(() => generateBtn.click(), 500);
+
+    </script>
+</body>
+</html>
